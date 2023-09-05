@@ -1,0 +1,357 @@
+---
+title: "DESMAN - Janvier 2023 - Analyse DESMAN des Génes aprés Mapping "
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, results='asis'}
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(reshape2)
+library(wesanderson)
+library(RColorBrewer)
+library(comparator)
+
+
+# Choix du gène ici, ça le change partout dans le script.
+genename="erm_B__18_X66468"
+
+
+print(paste("Gene_name",genename, sep = ":"))
+```
+
+
+
+
+ 
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+ 
+## fonction de calcul du nombre d'haplotypes optimal 
+
+
+figure_nb_haplotypes <- function (fichier){
+
+fichier_fit = read.csv(fichier, sep=',', header=FALSE)
+
+colnames(fichier_fit) = c( "H","G", "G2", "LP","Dev")
+p <- ggplot(fichier_fit, aes(x = "G", y = Dev)) + geom_jitter(width = 0.1, height = 0.0)  + theme_bw() 
+p <- p + ylab("Mean posterior deviance") + xlab("Number of variants") + theme(axis.text=element_text(size=12),axis.title=element_text(size=14,face="bold"))
+plot(p)
+return(fichier_fit)
+
+}
+```
+
+
+
+
+```{r functions2, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+## affichage des frequences des haplotypes par échantillon
+
+lecture_frequences <- function(fichier, i, sep) {
+   fichier_frequences = read.csv(fichier, sep=sep)
+
+  nb_variants = length(fichier_frequences[1,])-1 ## nombre de variants = nombre de colonnes -2
+  col_names =c("sample")
+  for (j in (1:nb_variants)){
+    col_names = append(col_names, paste("variant", j, sep=""))
+  }
+  colnames(fichier_frequences) = col_names
+
+fichier_frequences$replicat = as.character(i)
+return (fichier_frequences)
+}
+
+
+
+```
+
+
+
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+
+
+## Comparaison des sequences des haplotypes
+
+
+
+lecture_haplotypes <- function(fichier, nb_variants, i) {
+  print(paste(fichier, nb_variants, ".", i, "/Filtered_Tau_star_haplotypes", sep=''))
+  fichier_haplotypes = read.csv(paste(fichier, nb_variants, ".", i, "/Filtered_Tau_star_haplotypes", sep=''), sep='\t', header=FALSE)
+
+  print(ncol(fichier_haplotypes))
+
+  ## preparation du nom des colonnes
+  col_names = c("gene", "position")
+  for (j in (1:nb_variants)){
+    col_names = append(col_names, paste("variant", j, sep=""))
+  }
+  
+#  print(ncol(col_names))
+  print(col_names)
+  
+  colnames(fichier_haplotypes) = col_names
+  
+  fichier_haplotypes$replicat = i
+  fichier_haplotypes$position2 = fichier_haplotypes$position - 1263298
+  fichier_haplotypes$position_0 = seq(1:length(fichier_haplotypes[,1]))
+  return(fichier_haplotypes)
+}  
+
+
+
+
+ALL_haplotypes <- function(fichier, nb_variants, nb_repetitions) {
+  
+  tableau_all_haplotypes=c()
+  for (i in 1:nb_repetitions) {
+    
+    fichier_haplotypes = lecture_haplotypes(fichier, nb_variants, i) 
+    tableau_all_haplotypes = rbind(tableau_all_haplotypes, fichier_haplotypes)
+  }
+  return (tableau_all_haplotypes)
+}
+
+
+
+
+```
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+## Reordonne les haplotypes en fonction du premier replicat (A l'avenir, reordonner en fonction de celui ayant la meilleure vraissemblance)
+## Retourne la table de réorganisation automatique sous la forme :
+#
+# replicat variant1 variant2 variant3
+#     1      1         2        3
+#     2      3         1        2
+# doit se lire "pour le replicat 2, je mets variant1 original à la position 3, et variant2 original à la position 1; 
+# et non variant1 final sera variant3 original et variant2 final sera variant 1 original. 
+# HammingHaplo(tableau_all_haplotypes,nb_variants,nb_repetitions)
+HammingHaplo <- function(tablH, nbvar, nbrep) {
+ tablV = tablH[,3:(3+nbvar-1)] # on extrait les colonnes de variants
+ m1 <- Hamming()               # on créé la fonction de calcul de distance de Hamming
+ P=nrow(tablV)                 # nombre total de positions x nb replicats
+ R1lastP=P/nbrep               # dernière position variable pour le réplicat 1
+
+ # creation de la matrice de réarrangement
+ ReorgTable = matrix(data=NA,nrow=nbrep,ncol=nbvar)
+ colnames(ReorgTable) <- colnames(tablV)
+ ReorgTable[1,] = paste0("variant",1:nbvar)      # 1er replicat est la référence par défaut
+
+ 
+ for (cr in 2:nbrep){ # screen replicat par replicat
+   tablVX = tablV[((P*(cr-1)/nbrep)+1):(P*cr/nbrep),] # collecte seulement les variants pour le réplicat à comparer
+   Xnames<-colnames(tablVX)
+
+   for(R1cv in 1:nbvar){          # pour chaque replicat, compare tous les variants du réplicat 1
+    
+   dist<-{}                      # vecteur pour enregistrer les distances de hamming
+   for (cv in 1:length(Xnames)){
+    dist <- c(dist,m1(paste(tablV[1:R1lastP,R1cv],collapse=''),paste(tablVX[,Xnames[cv]],collapse='')))
+   }
+#   ReorgTable[cr,R1cv]=Xnames[which.min(dist)]
+   ReorgTable[cr,Xnames[which.min(dist)]]=R1cv
+   Xnames <- Xnames[-which.min(dist)]
+  }
+ }
+ 
+ # convert to transform the variant string in number
+ ReorgTable <- cbind(c(1:nbrep),matrix(as.numeric(gsub('variant','',ReorgTable)), ncol=nbvar))
+ colnames(ReorgTable) <- c("replicat",colnames(tablV))
+ 
+ 
+ return (ReorgTable)
+}
+```
+
+
+ 
+## Nombre optimal d'haplotypes 
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+# configurer les chemins en fonction du gène choisi
+genedir=paste0("DESMAN_",genename)
+fichier_fit = figure_nb_haplotypes(paste0(genedir,"/all_fit.txt"))
+
+
+ p <- ggplot(fichier_fit, aes(x = G, y = Dev)) + geom_jitter(width = 0.1, height = 0.0)  + theme_bw() 
+ p <- p + ylab("Mean posterior deviance") + xlab("Number of variants") +  theme(axis.text.x = element_text(angle=45, size=15, hjust = 1), axis.text.y = element_text( size=15), axis.title.x = element_text(size = 15),axis.title.y = element_text(size = 15))
+ p
+# 
+
+ ggsave(paste0(genename,"_0_nb_variants.png"))
+```
+
+## Comparaison des haplotypes fournis par DESMAN
+
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE, results=FALSE}
+
+## on definit le nombre d'haplotypes d'après la figure précédente
+nb_variants =3
+## nb de repetitions de l'algo dans DESMAN
+nb_repetitions =5
+
+
+tableau_all_haplotypes = ALL_haplotypes(paste0(genedir,"/desman."), nb_variants, nb_repetitions) 
+
+#melted_table <- select(tableau_all_haplotypes,position_0, variant1:variant3, replicat)%>% gather(key = haplotype, value =letter, variant1:variant3)
+melted_table <- select(tableau_all_haplotypes,position_0, 3:(3-1+nb_variants), replicat)%>% gather(key = haplotype, value =letter, 2:(3-2+nb_variants))
+
+plot =   ggplot(melted_table, aes(x=haplotype, y=position_0, fill=letter))+ geom_tile() + theme_light() +xlab("Samples ")+ ylab("Positions") + ggtitle("")+ theme(axis.text.x = element_text(angle=45, size=8, hjust = 1))  + scale_fill_manual(values = wes_palette("Royal1", n = 4)) + facet_grid( ~ replicat) 
+
+
+plot
+ggsave(paste(sep="_",genename,nb_variants,"0haplo.png"))
+
+```
+
+
+### Remise en ordre des variants suivant les différents réplicats
+
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+#Définir le fichier de remise en ordre : rename_col_variants.csv 
+
+#variant_names=read.csv2(paste0("rename_col_",nb_variants,"variants.csv"), sep=',')
+variant_names=HammingHaplo(tableau_all_haplotypes,nb_variants,nb_repetitions)
+names_variants=colnames(variant_names)[2:ncol(variant_names)]
+
+# print(tableau_all_haplotypes)
+
+# table de correspondance avec des noms grecs pour les variants. Pb, ggplot ré-ordonne automatiquement en ordre alphabétique, du coup delta se retrouve avant gamma et ça fout le bordel.
+# d'où le 'cgamma', et 'fzeta', etc. A améliorer peut être ?
+greek=c("alpha","beta","cgamma","delta","epsilon","fzeta","geta","htheta","iota","kappa")
+melted_table$newname = "alpha"
+
+# Reorganisation automatique des variants en fonction de la table
+# La table :
+# replicat variant1 variant2 variant3
+#     1      1         2        3
+#     2      3         1        2
+# doit se lire "pour le replicat 2, je mets variant1 original à la position 3, et variant2 original à la position 1; 
+# et non variant1 final sera variant3 original et variant2 final sera variant 1 original. 
+#
+
+for(n in names_variants){
+  for(i in 1:nb_repetitions) { melted_table[which(melted_table$haplotype == n & melted_table$replicat == i),"newname"] = greek[variant_names[i,n]] }
+}
+
+plot =   ggplot(melted_table, aes(x=newname, y=position_0, fill=letter))+ geom_tile() + theme_light() +xlab("Samples ")+ ylab("Positions") + ggtitle("")+ theme(axis.text.x = element_text(angle=45, size=8, hjust = 1))  + scale_fill_manual(values = wes_palette("Royal1", n = 4)) + facet_grid( ~ replicat) 
+plot
+
+plot =   ggplot(melted_table, aes(x= replicat, y=position_0, fill=letter))+ geom_tile() + theme_light() +xlab("Samples ")+ ylab("Positions") + ggtitle("")+ theme(axis.text.x = element_text(angle=45, size=8, hjust = 1))  + scale_fill_manual(values = wes_palette("Royal1", n = 4)) + facet_grid( ~ newname) 
+plot
+
+ggsave(paste(sep="_",genename,nb_variants,"1haplo.png"))
+
+```
+
+
+
+```{r 12ech_2haplo_tests, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+## on definit le nombre d'haplotypes d'après la figure précédente
+#nb_variants =3
+## nb de repetitions de l'algo dans DESMAN
+#nb_repetitions = 5
+
+# variant_names=read.csv2(paste0("rename_col_",nb_variants,"variants.csv"), sep=',')
+# names_variants=colnames(variant_names)[2:ncol(variant_names)]
+
+
+fichier_frequences_calculees = paste0(genedir,"/desman.")
+
+tableau_all_frequences=c()
+for (i in 1:nb_repetitions) {
+#i=1
+ # debugonce(lecture_frequences)
+ fichier_frequences =  lecture_frequences(paste(fichier_frequences_calculees, nb_variants, ".", i,"/Gamma_star.csv", sep=''), i, ',') ## lecture frequences calculees
+  colnames(fichier_frequences) = c("sample" , names_variants[unlist(variant_names[i,2:(2+nb_variants-1)],use.names = FALSE)], "replicat") 
+tableau_all_frequences = rbind(tableau_all_frequences, fichier_frequences)
+
+
+col_names=colnames(tableau_all_frequences)
+
+  fichier_frequence_gather = gather(tableau_all_frequences,
+                                    key = haplotype,
+                                    value = frequence,col_names[2]:col_names[1+nb_variants]
+  )
+
+
+}
+  
+
+
+```
+
+
+
+## Fréquences des haplotypes suivant les réplicats 
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+## metadata
+
+metadata=read.csv2("metadata_fugace.csv", sep='\t')
+# variant_names=read.csv2(paste0("rename_col_",nb_variants,"variants.csv"), sep=',')
+# names_variants=colnames(variant_names)[2:ncol(variant_names)]
+
+fichier_frequence_gather_metadata = full_join(fichier_frequence_gather, metadata, by=c("sample"="genoscope_sample_name"))
+
+# Pour changer les noms des variants en fonction de la table, mais c'est dejà fait lors du chargement a priori.
+#for(n in names_variants){
+#  for(i in 1:nb_repetitions) { fichier_frequence_gather_metadata[which(fichier_frequence_gather_metadata$haplotype == n & #fichier_frequence_gather_metadata$replicat == i),"haplotype"] = greek[variant_names[i,n]] }
+#}
+
+
+fichier_frequence_gather_metadata$replicat <- factor(fichier_frequence_gather_metadata$replicat)
+
+  plot =   ggplot(fichier_frequence_gather_metadata, aes(x=sample, y=frequence, color=haplotype, shape=replicat))+ geom_point() + theme_light() +xlab("Samples ")+ ylab("Proportion (%)") + ggtitle("")+ scale_color_brewer(palette="Paired")+ theme(axis.text.x = element_blank(), axis.text.y = element_text( size=15), axis.title.x = element_text(size = 15),axis.title.y = element_text(size = 15), legend.text = element_text( size=14), legend.title =  element_text( size=15))+ labs(color = "Variant", shape="replicat") +  scale_shape_manual(values=1:nlevels(fichier_frequence_gather_metadata$replicat))
+
+plot
+
+ggsave(paste(sep="_",genename,nb_variants,"2proportions.png"))
+
+
+```
+
+### Distribution des variants par famille et par génération pour le 1er réplicat  
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+## un seul replicat
+
+   fichier_frequence_gather_1replicat = fichier_frequence_gather_metadata %>% filter(replicat == 1)
+   fichier_frequence_gather_1replicat$Age <- as.factor(fichier_frequence_gather_1replicat$Age)
+
+     plot =   ggplot(fichier_frequence_gather_1replicat, aes(x=sample, y=frequence, color=haplotype,shape=Age))+ geom_point() + theme_light() +xlab("Samples ")+ ylab("Proportion (%)") + ggtitle("")+ scale_color_brewer(palette="Paired")+ theme(axis.text.x = element_blank(), axis.text.y = element_text( size=15), axis.title.x = element_text(size = 15),axis.title.y = element_text(size = 15), legend.text = element_text( size=14), legend.title =  element_text( size=15))+ labs(color = "Variant", shape="Age")+ facet_grid(Gen ~ Fam) + scale_shape_manual(values=c(16,18))
+plot
+
+ggsave(paste(sep="_",genename,nb_variants,"3gen_fam.png"))
+
+
+```
+
+### Distribution des variants par génération et condition d'élevage pour le 1er réplicat 
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy = FALSE}
+
+     plot =   ggplot(fichier_frequence_gather_1replicat, aes(x=sample, y=frequence, color=haplotype,shape=Age))+ geom_point() + theme_light() +xlab("Samples ")+ ylab("Proportion (%)") + ggtitle("")+ scale_color_brewer(palette="Paired")+ theme(axis.text.x = element_blank(), axis.text.y = element_text( size=15), axis.title.x = element_text(size = 15),axis.title.y = element_text(size = 15), legend.text = element_text( size=14), legend.title =  element_text( size=15))+ labs(color = "Variant", shape="Age")+ facet_grid(Gen ~ Rearing) + scale_shape_manual(values=c(16,18))
+ggplotly(plot)
+
+ggsave(paste(sep="_",genename,nb_variants,"4gen_rearing.png"))
+
+
+
+```
+
