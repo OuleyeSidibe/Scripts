@@ -32,7 +32,9 @@ threshold_replicate=8
 
 #Script python pour concatener les haplotypes DES des différents réplicats pour chacun des variant
 python3 $scripts/concate_haplo.py -i $directory -g $gene_name -v $nb_var
+#Script pour recupérer les variants majoritaires et correctements reconstruits de chaque géne
 python3 $scripts/correct_haplo.py -i $directory -f $freq_dir -g $gene_name -r $nb_replicate -s $threshold_replicate
-
+#script pour retrouver le réplicat avec les variants majoritaires correctement reconstruit pour la visualisation de leurs proportion dans les échantillons
+python3 $script/find_replicate.py -i $directory -g $gene_name
 
 conda deactivate
