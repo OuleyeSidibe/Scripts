@@ -14,7 +14,7 @@ import numpy as np
 """Script pour confirmer les haplotypes correctement reconstruits par DESMAN"""
 
 #Lancement du script
-# python3 correct_haplo.py -i directory -f freq_allellic -g gene-list.txt - r "number_replicate" -s "seuil_replicate"
+# python3 correct_haplo.py -i directory -f freq_allellic -g gene-list.txt - r "number_replicate" -s "threshold_replicate"
 
 #####################################################################################################################
 
@@ -28,12 +28,12 @@ def config_parameters():
     parser.add_argument("-f", "--freq_allelic", dest="freq_dir", help="freq allelic OSI direcetory")
     parser.add_argument("-g", "--gene_name", dest="gene_name", help="list of gene names")
     parser.add_argument("-r", "--repic", dest="nb_replicate", default="", help="number of replicats use in DESMAN")
-    parser.add_argument("-s", "--seuil", dest="seuil_replicate", help="minimal seuil of haplotype redondancy in replicate")
+    parser.add_argument("-s", "--seuil", dest="threshold_replicate", help="minimal seuil of haplotype redondancy in replicate")
 
     options = parser.parse_args()
     if len(sys.argv)< 5:
         sys.exit("warning : wrong number of arguments!!")
-    return options.directory, options.freq_dir, options.gene_name, options.nb_replicate, options.seuil_replicate
+    return options.directory, options.freq_dir, options.gene_name, options.nb_replicate, options.threshold_replicate
 
 
 
@@ -65,7 +65,7 @@ def maj_variants(haplo_file_path):
 
 def main():
 
-    directory, freq_dir, gene_name, nb_replicate, seuil_replicate= config_parameters()
+    directory, freq_dir, gene_name, nb_replicate, threshold_replicate= config_parameters()
     
     ##Lire la liste des noms de gènes
     gene_names = pd.read_csv(gene_name, index_col=[0], header=None)
@@ -116,7 +116,7 @@ def main():
                             if variant == var:
                                 nb_dup+=1
                         
-                        if nb_dup >= int(seuil_replicate):
+                        if nb_dup >= int(threshold_replicate):
                             # variant = pd.Series(variant, index= var_pos)
                             variant_file =pd.concat([variant_file, pd.Series(variant)], axis=1)
                             variant_file.to_csv(f"{gene_dir}/{haplo_file}")
@@ -132,40 +132,34 @@ def main():
 
         final_variant=pd.DataFrame()
         
-        nb_var=0
+        exit_loop = False
         for i in range(1, nb_haplo+1):
             j= i+1
 
             try:
                 variants_1, var_pos_1 = maj_variants(f"{gene_dir}/haplo_{i}Variant.csv")
                 variants_2, var_pos_2 = maj_variants(f"{gene_dir}/haplo_{j}Variant.csv")
+      
 
-                commun_variant=[]
                 for var in variants_1:
-                    if var in variants_2:
-                        commun_variant.append(var)
-                        
-                    if commun_variant == variants_1:
-                        nb_var+=1
-
+                    if var in variants_2 and len(variants_2) > len(variants_1):
+                        exit_loop = False
 
                     else:
+                        for var1 in variants_1:
+                            final_variant = pd.concat([final_variant, pd.Series(var1)], axis=1)
+                            final_variant.to_csv(f"{gene_dir}/final_variant.csv")
+                        exit_loop = True
                         break
-
-            except FileNotFoundError: 
-                # print(f"file haplo_{j} not find")
-                pass
             
-
-        if nb_var == 0:
-            final_variant = pd.concat([final_variant, pd.Series(var)], axis=1)
-
-        elif nb_var != 0:       
-            for var in variants_2:
-                final_variant = pd.concat([final_variant, pd.Series(var)], axis=1) 
-
-        final_variant.to_csv(f"{gene_dir}/final_variant.csv")
-        print(final_variant)
+            except FileNotFoundError :
+                for var1 in variants_1:
+                    final_variant = pd.concat([final_variant, pd.Series(var1)], axis=1)
+                    final_variant.to_csv(f"{gene_dir}/final_variant.csv")
+                exit_loop = True
+                
+            if exit_loop:
+                break
 
 
         """ Step_4: vérifier si les variants majoritaires sont correctements reconstruits  """

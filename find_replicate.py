@@ -36,35 +36,55 @@ def config_parameters():
     return options.directory, options.gene_name
 
 
-# recupérer les variants majoritaires sous forme de liste et les positions variables de chaque fichier haplo
+# recupérer les variants majoritaires sous forme de liste 
+def read_variant(gene_dir):
+    read_variant = pd.read_csv(f"{gene_dir}/final_variant.csv", index_col=(0))
+    variant_list =[]
+    for col in read_variant.columns:
+        variant= read_variant[col].tolist()
+        variant_list.append(variant)
+    optimal_var = len(read_variant.columns)
+    return variant_list, optimal_var
+
+
+# Ouvri les fichiers filtered tau haplotype d echaque réplicat
 def read_replicate_haplotype(replicate_file_path):
     read_file = pd.read_csv(replicate_file_path, sep="\t", header=None)
     read_file = read_file.loc[:,2:]
-    haplo_list = read_file.values.tolist() 
+    read_file.columns = range(1, len(read_file.columns)+1)
+    haplo_list=[]
+    for col in read_file.columns:
+        haplo=read_file[col].tolist()
+        haplo_list.append(haplo)
     
     return haplo_list
+
+
+
 
 
 def main():
 
     directory, gene_name = config_parameters()
+    # print(directory)
+    # print(gene_name)
+    # variant_list, optimal_var = read_variant(gene_dir)
 
     out_file = open(f"{directory}/replicates.csv", "w")
-
-    gene_names = pd.read_csv(gene_name, index_col=[0])
+    gene_names = pd.read_csv(gene_name, index_col=[0], header=None)
+    print(gene_names)
 
     nb_gene=0
     for gene in gene_names.index:
+        print(gene)
 
-        gene_dir = os.path.join(directory + "/DESMAN_" + gene)
-
-        # Ouvrir le fichier des variants majoritaires pour lecture
-        read_variant = pd.read_csv(f"{gene_dir}/final_variant.csv", index_col=(0))
-        variant_list = read_variant.values.tolist()
-        optimal_var = len(read_variant.columns)
+        gene_dir = os.path.join(directory + "/DESMAN_" + gene)   
+        variant_list, optimal_var = read_variant(gene_dir) 
+        print(optimal_var)
 
         #Ouvrir les fichiers filtered_tau_satar_haplotypes pour rechercher les variants majoritaires correctes
         for replicate_file in os.listdir(gene_dir):
+            
             if fnmatch.fnmatch(replicate_file, f"desman.{optimal_var}.*"):
 
                 replicate_file_path = os.path.join(gene_dir, replicate_file, "Filtered_Tau_star_haplotypes")

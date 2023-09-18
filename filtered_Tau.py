@@ -1,6 +1,7 @@
 ##librairies
 import pandas as pd
-import os, sys
+import os
+import sys
 import fnmatch
 from argparse import ArgumentParser
 
@@ -14,7 +15,7 @@ from argparse import ArgumentParser
 """Script pour reconstruire le fichier filtered tau avec uniquement les positions variables"""
 
 #Lancement du script
-# python3 correct_haplo.py -i directory -f freq_allellic -g gene-list.txt
+# python3 filtered_Tau.py -i directory -f freq_alle
 
 ################################################################################################
 
@@ -40,17 +41,17 @@ def main():
     for desman_file in os.listdir(directory):
         if fnmatch.fnmatch(desman_file, "desman.*"):
             # desman_file_path = os.path.join(directory, desman_file)
-            read_filtered_Tau = pd.read_csv(f"{directory}/{desman_file}/Filtered_Tau_star.csv", index_col=[1])
+            read_filtered_Tau = pd.read_csv(f"{directory}/{desman_file}/Filtered_Tau_star.csv", index_col=[0])
             # print(read_filtered_Tau)
             # Créer un nouveau DataFrame avec les lignes à conserver
-            new_filtered_Tau = read_filtered_Tau[read_filtered_Tau.index.isin(pos_var)]
+            new_filtered_Tau = read_filtered_Tau[read_filtered_Tau["Position"].isin(pos_var)]
             
-            # print(new_filtered_Tau)
+            print(new_filtered_Tau)
             new_filtered_Tau.to_csv(f"{directory}/{desman_file}/Filtered_Tau_star.csv")
 
     
-            
-print("Process done succesfully!!")
+                
+    print("Process done succesfully!!")
 
 if __name__ == "__main__":
     main()
