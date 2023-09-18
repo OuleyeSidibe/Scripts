@@ -1,0 +1,156 @@
+# Run in Qlogin
+# qlogin -q long.q -pe thread 30
+
+#Execute snakemake env 
+#conda activate snakemake-7.5.0
+
+#command execution snakemake file
+# snakemake --snakefile Snake_DESMAN --cores 30 -k
+
+
+#access to conda env
+shell.executable("/bin/bash")
+shell.prefix("source /usr/local/genome/Anaconda3/etc/profile.d/conda.sh;")
+
+
+# variables fixes
+script='/save_projet/ala/metachick-fugace/flugenavi/snakefile/'
+DESMAN='/home/osidibe/work/fluGenAvi_fugace/Analyse_postDESMAN_P2/desman_fugace'
+inputdir='/home/osidibe/work/fluGenAvi_fugace/freq_allelic_OSI'
+genes_list = '/home/osidibe/work/fluGenAvi_fugace/snakemake/genes_list.txt'
+
+
+nb_repet=1000 ## 1000  ## number of Gibbs sampling steps
+nb_g=5    ## 10  ## number of variants
+nb_repid=5   ## 5  ## number of replicates
+
+
+# with open(genes_list, "r") as f:
+#     genes_list = f.read().splitlines()
+    
+
+# GENE= genes_list
+GENE=['erm_F__3_M17808','erm_B__18_X66468','ant_6__Ib_1_FN594949', 'tet_A__6_AF534183']
+DIR='snk_DESMAN_testAdd_Pos'
+
+
+#list of number of variants and replicates
+LIST_VAR = range(1,6,1)
+LIST_REP = range(1,6,1)
+#rules
+
+rule all:
+    input: 
+        expand("{directory}/DESMAN_{gene}/desman.{g}.{repid}/haplotype.{g}.{repid}.fasta",gene = GENE, directory = DIR , g = LIST_VAR, repid = LIST_REP),
+        expand("{directory}/DESMAN_{gene}/all_fit.txt", gene = GENE, directory = DIR )
+
+
+rule create_freq_2DESMAN:
+    output:
+        "{directory}/DESMAN_{gene}/freq2Desman.txt"
+    params:
+        I = lambda wildcards: {inputdir},
+        S = lambda wildcards: {script},
+        G = "{gene}"
+    threads:1  
+    log:
+        out = "{directory}/DESMAN_{gene}/logs/log.stdout"
+    shell:
+        """
+        conda activate DES
+        python3 {params.S}/freq_to_desman_AL.py -i {params.I} -o {output} -g {params.G} > {log.out}
+        conda deactivate
+        """
+
+rule run_variant_filter:
+    input:
+        D = "{directory}/DESMAN_{gene}/freq2Desman.txt" ,
+        L = "{directory}/DESMAN_{gene}/logs/log.stdout"
+    output:
+        S = "{directory}/DESMAN_{gene}/sel_var.csv",
+        T = "{directory}/DESMAN_{gene}/tran_df.csv"
+    params:
+        D = lambda wildcards:{DESMAN},
+        O = "{directory}/DESMAN_{gene}/"       
+    threads:1 
+    shell:
+        """
+        conda activate DES 
+        python3 {params.D}/desman/Variant_Filter.py {input.D} -o {params.O} -p 1>> {input.L}
+        conda deactivate
+        """
+
+rule run_DESMAN:
+    input:
+        S = "{directory}/DESMAN_{gene}/sel_var.csv",
+        T = "{directory}/DESMAN_{gene}/tran_df.csv"
+    output:
+        T = "{directory}/DESMAN_{gene}/desman.{g}.{repid}/Filtered_Tau_star.csv",
+        F = "{directory}/DESMAN_{gene}/desman.{g}.{repid}/fit.txt"
+    params:
+        D = lambda wildcards: {DESMAN},
+        R = lambda wildcards: {nb_repet},
+        G = "{g}",
+        O = "{directory}/DESMAN_{gene}/desman.{g}.{repid}",
+        REP = "{repid}"
+    threads:1
+    log:
+        err = "{directory}/DESMAN_{gene}/logs/DESMAN.{g}.{repid}.log.stderr"
+    shell:
+        """
+        conda activate DES
+        desman {input.S} -g {params.G} -e {input.T} -o {params.O} -i {params.R} -s {params.REP} 2> {log.err} 
+        conda deactivate
+        """
+
+rule create_haplotypes:
+    input:
+        D = "{directory}/DESMAN_{gene}/desman.{g}.{repid}/Filtered_Tau_star.csv",
+        L = "{directory}/DESMAN_{gene}/logs/DESMAN.{g}.{repid}.log.stderr"
+    output:
+        H = "{directory}/DESMAN_{gene}/desman.{g}.{repid}/Filtered_Tau_star_haplotypes"
+    params:
+        S = lambda wildcards: {script},
+        G = "{g}",
+        REP = "{repid}"
+    threads:1
+    log:
+        out = "{directory}/DESMAN_{gene}/logs/DESMAN.{g}.{repid}.log.stdout"
+    shell:
+        """
+        conda activate DES
+        echo 'La variable vaut {params.G} et {params.REP}' 1> {log.out}
+        python3 {params.S}/convertit_DESMAN_filtredTau_haplotypes.py -i {input.D} -o {output.H} 1>> {log.out} 2>> {input.L}
+        conda deactivate
+        """
+
+rule haplotype_sequence:
+    input:
+       H  = "{directory}/DESMAN_{gene}/desman.{g}.{repid}/Filtered_Tau_star_haplotypes",
+       F  = "{directory}/DESMAN_{gene}/freq2Desman.txt" ,
+       L  = "{directory}/DESMAN_{gene}/logs/DESMAN.{g}.{repid}.log.stdout",
+       L2 = "{directory}/DESMAN_{gene}/logs/DESMAN.{g}.{repid}.log.stderr"
+
+    output:
+        "{directory}/DESMAN_{gene}/desman.{g}.{repid}/haplotype.{g}.{repid}.fasta"
+    params:
+        G = "{g}",
+        S = lambda wildcards: {script}
+    threads:1
+    shell:
+        """
+        conda activate DES
+        python3 {params.S}/find_haplotype_variant.py -p {input.H} -f {input.F} -o {output} -n {params.G} 1>> {input.L} 2>> {input.L2} 
+        conda deactivate
+        """
+
+rule generate_all_fit:
+    input:
+        expand("{directory}/DESMAN_{gene}/desman.{g}.{repid}/fit.txt",gene = GENE, directory = DIR , g = LIST_VAR, repid = LIST_REP)
+    output:
+        "{directory}/DESMAN_{gene}/all_fit.txt"
+    threads:1
+    shell:
+        """
+        cat {input} > {output} 
+        """

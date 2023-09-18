@@ -1,0 +1,26 @@
+---
+title: "Visualisation_PosV_matriceERR.Rmd - Mai 2023"
+output: html_document
+date: "2023-05-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r pressure, echo=FALSE}
+
+library(ggplot2)
+
+mat =read.csv("Prop_matriceERRexact.csv")
+mat
+
+
+ggplot(mat, aes(x=Num_PosVariable, y=Prop_matriceERRexact)) +
+    geom_line()+
+    ylab("Proportion de matrices d'erreurs exactes") + 
+    xlab("Nombre de Positions variables") + 
+    ggtitle("Distribution de la proportion de matrices d'erreurs exactes en fonction du nombre de position variable")
+
+ggsave("Prop_matriceERRexact.png")
+```
