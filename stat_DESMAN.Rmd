@@ -1,0 +1,42 @@
+---
+title: "Stat_DESMAN - Juin2023"
+output: html_document
+date: "2023-06-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+entry="/home/osidibe/work/fluGenAvi_fugace/Analyse_stat/coverageRPK_zero.csv"
+metadata= "/home/osidibe/work/fluGenAvi_fugace/Analyse_stat/coverageRPK.csv"
+outputdir="/home/osidibe/work/fluGenAvi_fugace/Analyse_stat"
+
+input=read.table(entry,header=TRUE, row.names=1, check.names="false", sep = ",", quote='"')
+input[2] <- NULL
+
+##############################################################################
+# Filter and process ARGs
+##############################################################################
+
+Positives=input
+# get RPKM for each ARG in each sample (read per kilobase per million reads)
+# = divide the values of each row by the first value of the row
+Positives=Positives[,-1]/(Positives[,1]/1000000)
+
+View(Positives)
+```
+
+```{r}
+##############################################################################
+# show global ARG prevalence coloured by ARG family
+##############################################################################
+
+# Compute prevalence for each ARG and sort by increasing prevalence
+prevARGnames=sub("^.*\\|","",sub("_.*","",colnames(Positives),perl=T),perl=T)
+Acols=sample(rainbow(30,v=c(1,0.4,0.6,0.8),s=c(0.5,1)),length(unique(famlist)),  replace = TRUE)
+```
+

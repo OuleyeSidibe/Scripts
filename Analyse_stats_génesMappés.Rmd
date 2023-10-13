@@ -1,0 +1,197 @@
+---
+title: "Visualisation des statistiques de couvertures et profondeures des génes mappées sur resfinder"
+output: html_document
+date: "2023-01-27"
+---
+
+
+### **1.Visualisation de la distribution des génes mappées dans les différents échantillons**
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(plyr)
+library(plot3D)
+library(reshape2)
+library(ComplexHeatmap)                                                                                                     
+library(circlize) 
+
+
+#Directory
+minimum_depth_coveraDepth_coverage= "5_90_90"
+print(paste(minimum_depth_coveraDepth_coverage, "parametres de filtres", sep =":"))
+
+path = "/home/osidibe/work/fluGenAvi_fugace/analyse_preDESMAN/filters/coverage_by_SAMPLE/out_statbyGENE"
+directory = paste(path, minimum_depth_coveraDepth_coverage, sep ="_")
+inputdir = "~/work/fluGenAvi_fugace/analyse_preDESMAN/filters/coverage_by_SAMPLE"
+
+```
+
+
+
+
+#### Histogramme de distribution des génes suivant les échantillons
+```{r echo =FALSE, message=FALSE}
+#Lecture de la table contenant le nombre d'échantillons par gène
+df = read.csv(paste(inputdir,"out_nbGENES_bySAMPLES.csv", sep ="/"))
+
+#Nombre total de gènes mappés?
+nb_genes = length(row.names(df))
+print(paste(nb_genes , "gènes sont mappés"))
+
+#Histogramme du nombre de génes par échantillon
+p1 = ggplot(df, aes(x = nb_of_samples)) + 
+    geom_histogram(bins =30, fill = "#00688B", color = "white") + 
+    ylab("Genes")  +
+    xlab("Number of samples") 
+    main=("number of sambles by genes")
+p1 
+```
+
+
+
+
+### **2. Visualisation de la couverture des génes avant filtres (couverture et profondeur)**
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+#Lecture de la table statistique (profondeure moyenne, écart-type, et couverture) pour chaque géne dans les différents échantillons 
+df1 = read.csv(paste(directory,"stat_beforeFILTER.csv", sep ="/"), sep="\t",  col.names =c("gene_name", "Samples", "average_depth", "std", "Coverage"), header = FALSE)
+
+
+#Histogramme de profondeur moyenne des gènes
+p2 = ggplot(df1, aes(x= average_depth)) + 
+    geom_histogram(fill = "#00688B", color= "white", bins =30) + 
+    scale_x_log10() +
+    ylab("Genes")  +
+    xlab("Average depth") 
+    main=("Histogram of the average depth of genes")
+    #geom_vline(xintercept = 10 ,  color ="red") 
+    #annotate (geom = "text",  x = 50 ,y = 400, label = "mean = 10reads/bp", color = "red" , size = 5)
+p2
+
+
+
+#Heatmap de couverture des gènes
+
+##Creer un dataframe avec les données : gene_name, samples et coverage.
+df1_ = subset(df1 , select = -c(average_depth, std))
+
+#Transformer le dataframe en matrice 
+z = acast(df1_, df1_[,1] ~ df1_[,2])
+z[is.na(z)] = 0
+
+#Coordonnées de x et y
+#x=nrow(z) 
+#y=ncol(z) 
+
+##Heamap
+#heatmap annotatotion data
+metadata = read.csv("/home/osidibe/work/R/fuGace_project/metadata_fugace.csv", sep ="\t", header = TRUE)
+
+#Annotation des colonnes
+annotation_col = data.frame(
+    Generation = as.factor(metadata$Gen),
+    Rearing = as.factor(metadata$Rearing),
+    check.names = FALSE
+    )
+
+#rownames(annotation_col) = colnames(z)
+ann_colors = list(
+    Generation = c(`1` = "#00CCFF", `2` = "#99FF00", `3` = "#FFFF66"),
+    Rearing = c(`R` = "#FF0066", `T` = "#3399FF")
+    )
+
+#heatmap matrice + annotation
+color = colorRamp2(c(0, 50, 100), c("#836FFF", "#EEEEEE", "red"))
+png(file = paste(directory,"heatmap_nofiltered_coverage.png", sep="/"), width = 30, height = 50, units = "in", res = 50)
+
+pheatmap(z,  
+    column_names_side = "top",
+    color = colorRamp2(c(0, 50, 100), c("#836FFF", "#EEEEEE", "red")), 
+    border_color = "white",
+    name = "Coverage %",
+    fontsize_col = 20,
+    fontsize = 3, 
+    fontsize_row = 20,
+    cluster_cols = FALSE ,   gaps_col =c(6,17,31,45),
+    annotation_col = annotation_col,
+    annotation_colors = ann_colors
+       )
+dev.off()
+
+```
+
+
+
+
+
+### **3. Visualisation de la couverture des génes aprés filtres (couverture et profondeur)**
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+#Lecture de la table statistique (profondeure moyenne, écart-type, et couverture) pour chaque géne dans les différents échantillons 
+df2 = read.csv(paste(directory,"stat_afterFILTER.csv", sep ="/"), sep="\t",  col.names =c("gene_name", "Samples", "average_depth", "std", "Coverage"), header = FALSE)
+
+
+
+#Histogramme de profondeur moyenne des gènes
+p3 = ggplot(df2, aes(x= average_depth)) + 
+    geom_histogram(fill = "#00688B", color= "white", bins =30) + 
+    scale_x_log10() +
+    ylab("Genes")  +
+    xlab("Average depth") 
+    main=("Histogram of the average depth of genes")
+    #geom_vline(xintercept = 10 ,  color ="red") 
+    #annotate (geom = "text",  x = 50 ,y = 400, label = "mean = 10reads/bp", color = "red" , size = 5)
+p3
+
+
+
+#Heatmap de couverture des gènes
+
+##Creer un dataframe avec les données : gene_name, samples et coverage.
+df2_ = subset(df2 , select = -c(average_depth, std))
+
+
+#Transformer le dataframe en matrice 
+z = acast(df2_, df2_[,1] ~ df2_[,2])
+z[is.na(z)] = 0
+
+nb_genes_retained = length(row.names(z))
+print(paste(nb_genes_retained , "gènes sont retenus"))
+
+
+##Heamap
+#heatmap annotatotion data
+metadata = read.csv("/home/osidibe/work/R/fuGace_project/metadata_fugace.csv", sep ="\t", header = TRUE)
+
+#Annotation des colonnes
+annotation_col = data.frame(
+    Generation = as.factor(metadata$Gen),
+    Rearing = as.factor(metadata$Rearing),
+    check.names = FALSE
+    )
+
+#rownames(annotation_col) = colnames(z)
+ann_colors = list(
+    Generation = c(`1` = "#00CCFF", `2` = "#99FF00", `3` = "#FFFF66"),
+    Rearing = c(`R` = "#FF0066", `T` = "#3399FF")
+    )
+
+#heatmap matrice + annotation
+color = colorRamp2(c(0, 50, 100), c("#836FFF", "#EEEEEE", "red"))
+png(file = paste(directory,"heatmap_filtered_coverage.png", sep="/"), width = 30, height = 50, units = "in", res = 50)
+
+p4 = pheatmap(z,  
+    column_names_side = "top",
+    color = colorRamp2(c(0, 50, 100), c("#836FFF", "#EEEEEE", "red")), 
+    border_color = "white",
+    name = "Coverage %",
+    fontsize_col = 20,
+    fontsize = 3, 
+    fontsize_row = 20,
+    cluster_cols = FALSE ,   gaps_col =c(6,17,31,45),
+    annotation_col = annotation_col,
+    annotation_colors = ann_colors
+       )
+dev.off()
+p4
+```
+
